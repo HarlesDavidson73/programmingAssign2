@@ -93,7 +93,10 @@ class MessengerClient:
         return header, ciphertext
 
     def receiveMessage(self, name, header, ciphertext):
-        if len(header) != 73 or len(ciphertext) < 12:
+        # Reject non-bytes inputs, incorrect header length, or truncated ciphertexts
+        if not isinstance(header, (bytes, bytearray)) or len(header) != 73:
+            return None
+        if not isinstance(ciphertext, (bytes, bytearray)) or len(ciphertext) < 12:
             return None
 
         if name in self.conns:
@@ -114,11 +117,13 @@ class MessengerClient:
         PN = int.from_bytes(header[65:69], "big")
         msg_num = int.from_bytes(header[69:73], "big")
 
-        try: 
+        try:
             known_pk = None
-
             if state["DHr"] is not None:
-                known_pk = state["DHr"].public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+                known_pk = state["DHr"].public_bytes(
+                    serialization.Encoding.X962,
+                    serialization.PublicFormat.UncompressedPoint
+                )
 
             if header_pk != known_pk:
                 if state["CKr"] is not None and PN != state["Nr"]:
@@ -154,11 +159,11 @@ class MessengerClient:
             body = ciphertext[12:]
 
             message = AESGCM(msg_key).decrypt(nonce, body, header)
-
             state["Nr"] += 1
             self.conns[name] = state
             return message.decode("utf-8")
-        except(InvalidTag, ValueError, UnicodeDecodeError):
+
+        except (InvalidTag, TypeError, ValueError, UnicodeDecodeError):
             return None
 
     def report(self, name, message):
